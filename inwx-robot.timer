@@ -1,0 +1,11 @@
+[Unit]
+Description=Run INWX IPv6 Robot every 2 minutes
+Requires=inwx-robot.service
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=2min
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

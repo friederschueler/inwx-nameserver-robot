@@ -1,0 +1,9 @@
+# Ignore configuration with credentials
+config.py
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+*.log
