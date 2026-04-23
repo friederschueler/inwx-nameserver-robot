@@ -70,6 +70,29 @@ else
   echo "config.py has been created and populated."
 fi
 
+# --- Deploy application files ---
+INSTALL_DIR="/opt/inwx-robot"
+
+echo "Deploying application files to $INSTALL_DIR..."
+sudo mkdir -p "$INSTALL_DIR"
+sudo cp "$SCRIPT_DIR/main.py" "$INSTALL_DIR/main.py"
+sudo cp "$SCRIPT_DIR/config.py" "$INSTALL_DIR/config.py"
+
+# --- Create virtual environment ---
+if [[ -d "$INSTALL_DIR/venv" ]]; then
+  echo "Virtual environment already exists, skipping."
+else
+  echo "Creating virtual environment..."
+  sudo python3 -m venv "$INSTALL_DIR/venv"
+  echo "Installing dependencies..."
+  sudo "$INSTALL_DIR/venv/bin/pip" install --quiet requests
+  echo "Virtual environment ready."
+fi
+
+# --- Set ownership ---
+echo "Setting ownership to inwx-nameserver-robot:inwx-nameserver-robot..."
+sudo chown -R inwx-nameserver-robot:inwx-nameserver-robot "$INSTALL_DIR"
+
 echo "Installing systemd unit files..."
 sudo install -m 0644 "$SCRIPT_DIR/$SERVICE_FILE" "$SYSTEMD_DIR/$SERVICE_FILE"
 sudo install -m 0644 "$SCRIPT_DIR/$TIMER_FILE" "$SYSTEMD_DIR/$TIMER_FILE"
