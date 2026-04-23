@@ -100,8 +100,7 @@ sudo install -m 0644 "$SCRIPT_DIR/$TIMER_FILE" "$SYSTEMD_DIR/$TIMER_FILE"
 echo "Reloading systemd..."
 sudo systemctl daemon-reload
 
-echo "Enabling and starting service and timer..."
-sudo systemctl enable --now inwx-nameserver-robot.service
+echo "Enabling and starting timer..."
 sudo systemctl enable --now inwx-nameserver-robot.timer
 
 echo "Checking status..."
