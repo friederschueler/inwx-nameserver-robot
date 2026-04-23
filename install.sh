@@ -6,6 +6,13 @@ SERVICE_FILE="inwx-nameserver-robot.service"
 TIMER_FILE="inwx-nameserver-robot.timer"
 SYSTEMD_DIR="/etc/systemd/system"
 
+if [[ $# -ge 1 ]]; then
+  INSTALL_DIR="$1"
+else
+  read -rp "Installation directory [/opt/inwx-nameserver-robot]: " INSTALL_DIR
+  INSTALL_DIR="${INSTALL_DIR:-/opt/inwx-nameserver-robot}"
+fi
+
 if [[ ! -f "$SCRIPT_DIR/config.default.py" ]]; then
   echo "Error: config.default.py not found in $SCRIPT_DIR"
   exit 1
@@ -71,8 +78,6 @@ else
 fi
 
 # --- Deploy application files ---
-INSTALL_DIR="/opt/inwx-robot"
-
 echo "Deploying application files to $INSTALL_DIR..."
 sudo mkdir -p "$INSTALL_DIR"
 sudo cp "$SCRIPT_DIR/main.py" "$INSTALL_DIR/main.py"
@@ -96,6 +101,7 @@ sudo chown -R inwx-nameserver-robot:inwx-nameserver-robot "$INSTALL_DIR"
 echo "Installing systemd unit files..."
 sudo install -m 0644 "$SCRIPT_DIR/$SERVICE_FILE" "$SYSTEMD_DIR/$SERVICE_FILE"
 sudo install -m 0644 "$SCRIPT_DIR/$TIMER_FILE" "$SYSTEMD_DIR/$TIMER_FILE"
+sudo sed -i "s|/opt/inwx-robot|${INSTALL_DIR}|g" "$SYSTEMD_DIR/$SERVICE_FILE"
 
 echo "Reloading systemd..."
 sudo systemctl daemon-reload
