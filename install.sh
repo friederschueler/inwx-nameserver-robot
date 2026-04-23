@@ -2,45 +2,87 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SERVICE_FILE="inwx-robot.service"
-TIMER_FILE="inwx-robot.timer"
+SERVICE_FILE="inwx-nameserver-robot.service"
+TIMER_FILE="inwx-nameserver-robot.timer"
 SYSTEMD_DIR="/etc/systemd/system"
 
 if [[ ! -f "$SCRIPT_DIR/config.default.py" ]]; then
-  echo "Fehler: config.default.py wurde nicht gefunden in $SCRIPT_DIR"
+  echo "Error: config.default.py not found in $SCRIPT_DIR"
   exit 1
 fi
 
 if [[ ! -f "$SCRIPT_DIR/$SERVICE_FILE" ]]; then
-  echo "Fehler: $SERVICE_FILE wurde nicht gefunden in $SCRIPT_DIR"
+  echo "Error: $SERVICE_FILE not found in $SCRIPT_DIR"
   exit 1
 fi
 
 if [[ ! -f "$SCRIPT_DIR/$TIMER_FILE" ]]; then
-  echo "Fehler: $TIMER_FILE wurde nicht gefunden in $SCRIPT_DIR"
+  echo "Error: $TIMER_FILE not found in $SCRIPT_DIR"
   exit 1
 fi
 
-if [[ -f "$SCRIPT_DIR/config.py" ]]; then
-  echo "config.py existiert bereits, ueberspringe Kopie."
+# --- Create system user ---
+if id "inwx-nameserver-robot" &>/dev/null; then
+  echo "System user 'inwx-nameserver-robot' already exists, skipping."
 else
-  cp "$SCRIPT_DIR/config.default.py" "$SCRIPT_DIR/config.py"
-  echo "config.default.py wurde nach config.py kopiert."
+  echo "Creating system user 'inwx-nameserver-robot'..."
+  sudo useradd \
+    --system \
+    --no-create-home \
+    --shell /usr/sbin/nologin \
+    --comment "INWX Nameserver Robot" \
+    inwx-nameserver-robot
+  echo "System user 'inwx-nameserver-robot' created."
 fi
 
-echo "Installiere systemd Unit-Dateien mit sudo..."
+# --- Populate config.py ---
+if [[ -f "$SCRIPT_DIR/config.py" ]]; then
+  echo "config.py already exists, skipping configuration."
+else
+  echo ""
+  echo "=== Configuration ==="
+
+  read -rp "INWX username: " CFG_USERNAME
+  read -rsp "INWX password: " CFG_PASSWORD
+  echo ""
+  read -rp "Domain (e.g. example.com): " CFG_DOMAIN
+
+  echo "Enter record names as a comma-separated list."
+  echo "Leave empty for root domain (@), e.g.: ,www,mail"
+  read -rp "RECORD_NAMES: " CFG_RECORD_NAMES_RAW
+
+  # Convert comma-separated input to a Python list, e.g. ",www" -> ["", "www"]
+  CFG_RECORD_NAMES_PY="[$(echo "$CFG_RECORD_NAMES_RAW" | sed 's/,/", "/g' | sed 's/^/"/;s/$/"/' | sed 's/""/"/g')]"
+
+  read -rp "Network interface (default: eno1): " CFG_INTERFACE
+  CFG_INTERFACE="${CFG_INTERFACE:-eno1}"
+
+  cp "$SCRIPT_DIR/config.default.py" "$SCRIPT_DIR/config.py"
+
+  sed -i \
+    -e "s|INWX_USERNAME = \"your_username\"|INWX_USERNAME = \"${CFG_USERNAME}\"|" \
+    -e "s|INWX_PASSWORD = \"your_password\"|INWX_PASSWORD = \"${CFG_PASSWORD}\"|" \
+    -e "s|DOMAIN = \"example.com\"|DOMAIN = \"${CFG_DOMAIN}\"|" \
+    -e "s|RECORD_NAMES = \[\"\".*\]|RECORD_NAMES = ${CFG_RECORD_NAMES_PY}|" \
+    -e "s|INTERFACE = \"eno1\"|INTERFACE = \"${CFG_INTERFACE}\"|" \
+    "$SCRIPT_DIR/config.py"
+
+  echo "config.py has been created and populated."
+fi
+
+echo "Installing systemd unit files..."
 sudo install -m 0644 "$SCRIPT_DIR/$SERVICE_FILE" "$SYSTEMD_DIR/$SERVICE_FILE"
 sudo install -m 0644 "$SCRIPT_DIR/$TIMER_FILE" "$SYSTEMD_DIR/$TIMER_FILE"
 
-echo "Lade systemd neu..."
+echo "Reloading systemd..."
 sudo systemctl daemon-reload
 
-echo "Aktiviere und starte Service und Timer..."
-sudo systemctl enable --now inwx-robot.service
-sudo systemctl enable --now inwx-robot.timer
+echo "Enabling and starting service and timer..."
+sudo systemctl enable --now inwx-nameserver-robot.service
+sudo systemctl enable --now inwx-nameserver-robot.timer
 
-echo "Pruefe Status..."
-sudo systemctl status --no-pager inwx-robot.service || true
-sudo systemctl status --no-pager inwx-robot.timer || true
+echo "Checking status..."
+sudo systemctl status --no-pager inwx-nameserver-robot.service || true
+sudo systemctl status --no-pager inwx-nameserver-robot.timer || true
 
-echo "Installation abgeschlossen."
+echo "Installation complete."

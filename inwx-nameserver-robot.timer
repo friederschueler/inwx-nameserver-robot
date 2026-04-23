@@ -1,6 +1,6 @@
 [Unit]
 Description=Run INWX IPv6 Robot every 2 minutes
-Requires=inwx-robot.service
+Requires=inwx-nameserver-robot.service
 
 [Timer]
 OnBootSec=2min
