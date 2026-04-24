@@ -82,6 +82,7 @@ echo "Deploying application files to $INSTALL_DIR..."
 sudo mkdir -p "$INSTALL_DIR"
 sudo cp "$SCRIPT_DIR/main.py" "$INSTALL_DIR/main.py"
 sudo cp "$SCRIPT_DIR/config.py" "$INSTALL_DIR/config.py"
+sudo cp "$SCRIPT_DIR/requirements.txt" "$INSTALL_DIR/requirements.txt"
 
 # --- Create virtual environment ---
 if [[ -d "$INSTALL_DIR/venv" ]]; then
@@ -90,7 +91,7 @@ else
   echo "Creating virtual environment..."
   sudo python3 -m venv "$INSTALL_DIR/venv"
   echo "Installing dependencies..."
-  sudo "$INSTALL_DIR/venv/bin/pip" install --quiet requests
+  sudo "$INSTALL_DIR/venv/bin/pip" install --quiet -r "$INSTALL_DIR/requirements.txt"
   echo "Virtual environment ready."
 fi
 
