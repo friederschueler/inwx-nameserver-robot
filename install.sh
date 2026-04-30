@@ -72,6 +72,7 @@ else
     -e "s|DOMAIN = \"example.com\"|DOMAIN = \"${CFG_DOMAIN}\"|" \
     -e "s|RECORD_NAMES = \[\"\".*\]|RECORD_NAMES = ${CFG_RECORD_NAMES_PY}|" \
     -e "s|INTERFACE = \"eno1\"|INTERFACE = \"${CFG_INTERFACE}\"|" \
+    -e "s|CACHE_FILE = \"/opt/inwx-nameserver-robot/|CACHE_FILE = \"${INSTALL_DIR}/|" \
     "$SCRIPT_DIR/config.py"
 
   echo "config.py has been created and populated."

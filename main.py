@@ -3,16 +3,26 @@
 Updates INWX AAAA DNS record with the current global IPv6 address from eno1 interface.
 """
 
+import logging
+import os
 import subprocess
 import sys
 import requests
 import config
+
+logging.basicConfig(
+    level=logging.WARNING,
+    format="%(levelname)s: %(message)s",
+    stream=sys.stdout
+)
+log = logging.getLogger(__name__)
 
 INWX_USERNAME = config.INWX_USERNAME
 INWX_PASSWORD = config.INWX_PASSWORD
 DOMAIN = config.DOMAIN
 INTERFACE = config.INTERFACE
 INWX_API_URL = config.INWX_API_URL
+CACHE_FILE = getattr(config, "CACHE_FILE", "/tmp/inwx_nameserver_robot_ipv6.cache")
 
 # Backward-compatible: allow old RECORD_NAME and new RECORD_NAMES style.
 RECORD_NAMES = getattr(config, "RECORD_NAMES", [getattr(config, "RECORD_NAME", "")])
@@ -34,18 +44,21 @@ def get_ipv6_address(interface):
         
         for line in result.stdout.split('\n'):
             if 'inet6' in line and 'scope global' in line:
+                # Skip deprecated addresses (old prefix still valid but no longer preferred)
+                if 'deprecated' in line:
+                    continue
                 ipv6 = line.strip().split()[1].split('/')[0]
-                
+
                 # Skip ULA addresses (fc00::/7 - starts with fd or fc)
                 # and link-local addresses (fe80::/10)
                 if not ipv6.startswith(('fc', 'fd', 'fe80')):
                     return ipv6
         
-        print(f"No public global IPv6 address found on {interface}")
+        log.error("No public global IPv6 address found on %s", interface)
         return None
         
     except subprocess.CalledProcessError as e:
-        print(f"Error getting IPv6 address: {e}")
+        log.error("Error getting IPv6 address: %s", e)
         return None
 
 
@@ -66,7 +79,7 @@ def inwx_api_call(method, params):
         return response.json()
         
     except requests.RequestException as e:
-        print(f"API request failed: {e}")
+        log.error("API request failed: %s", e)
         return None
 
 
@@ -80,10 +93,10 @@ def login():
     
     result = inwx_api_call("account.login", params)
     if result and result.get("code") == 1000:
-        print("Login successful")
+        log.debug("Login successful")
         return True
     else:
-        print(f"Login failed: {result}")
+        log.error("Login failed: %s", result)
         return False
 
 
@@ -104,7 +117,7 @@ def get_all_records(domain, record_type="AAAA"):
         records = result.get("resData", {}).get("record", [])
         return [r for r in records if r.get("type") == record_type]
     else:
-        print(f"Failed to get records: {result}")
+        log.error("Failed to get records: %s", result)
         return []
 
 
@@ -133,12 +146,33 @@ def update_aaaa_record(record_id, ipv6_address, record_name):
     
     if result and result.get("code") == 1000:
         display_name = record_name if record_name else "@"
-        print(f"✓ Successfully updated {display_name} → {ipv6_address}")
+        log.info("Updated %s -> %s", display_name, ipv6_address)
         return True
     else:
         display_name = record_name if record_name else "@"
-        print(f"✗ Failed to update {display_name}: {result}")
+        log.error("Failed to update %s: %s", display_name, result)
         return False
+
+
+def read_cached_ipv6():
+    """Read the last known IPv6 address from the cache file."""
+    try:
+        with open(CACHE_FILE, "r") as f:
+            return f.read().strip()
+    except OSError:
+        return None
+
+
+def write_cached_ipv6(ipv6):
+    """Persist the current IPv6 address to the cache file."""
+    try:
+        cache_dir = os.path.dirname(CACHE_FILE)
+        if cache_dir:
+            os.makedirs(cache_dir, exist_ok=True)
+        with open(CACHE_FILE, "w") as f:
+            f.write(ipv6)
+    except OSError as e:
+        log.warning("Could not write cache file: %s", e)
 
 
 def main():
@@ -146,69 +180,68 @@ def main():
     ipv6 = get_ipv6_address(INTERFACE)
     if not ipv6:
         sys.exit(1)
-    
-    print(f"Current public IPv6 address: {ipv6}\n")
-    
+
+    # Skip everything if the address hasn't changed since last run
+    if read_cached_ipv6() == ipv6:
+        log.debug("IPv6 address unchanged (%s), skipping INWX update", ipv6)
+        sys.exit(0)
+
+    log.debug("Current public IPv6 address: %s", ipv6)
+
     # Login to INWX
     if not login():
         sys.exit(1)
-    
+
     # Get all AAAA records for the domain
-    print(f"Fetching AAAA records for {DOMAIN}...")
+    log.debug("Fetching AAAA records for %s...", DOMAIN)
     all_records = get_all_records(DOMAIN, "AAAA")
-    
+
     if not all_records:
-        print("No AAAA records found")
+        log.error("No AAAA records found")
         logout()
         sys.exit(1)
-    
+
     # Process each record name from config
-    print(f"\nProcessing {len(RECORD_NAMES)} record(s)...\n")
-    
+    log.debug("Processing %d record(s)...", len(RECORD_NAMES))
+
     updated_count = 0
     skipped_count = 0
     failed_count = 0
-    
+
     for record_name in RECORD_NAMES:
         display_name = record_name if record_name else "@"
         record = find_record_by_name(all_records, DOMAIN, record_name)
-        
+
         if not record:
-            print(f"✗ Record '{display_name}' not found")
+            log.warning("Record '%s' not found", display_name)
             failed_count += 1
             continue
-        
+
         record_id = record.get("id")
         current_ipv6 = record.get("content")
-        
-        print(f"Record '{display_name}' (ID: {record_id})")
-        print(f"  Current: {current_ipv6}")
-        
+
+        log.debug("Record '%s' (ID: %s) current: %s", display_name, record_id, current_ipv6)
+
         if current_ipv6 == ipv6:
-            print(f"  Status: Already up to date")
+            log.debug("Record '%s': already up to date", display_name)
             skipped_count += 1
         else:
-            print(f"  Status: Updating...")
+            log.debug("Record '%s': updating...", display_name)
             if update_aaaa_record(record_id, ipv6, display_name):
                 updated_count += 1
             else:
                 failed_count += 1
-        
-        print()
-    
+
     # Logout
     logout()
-    
-    # Summary
-    print("=" * 50)
-    print(f"Summary:")
-    print(f"  Updated: {updated_count}")
-    print(f"  Skipped (already up to date): {skipped_count}")
-    print(f"  Failed: {failed_count}")
-    print("=" * 50)
-    
+
+    log.debug("Summary: updated=%d skipped=%d failed=%d", updated_count, skipped_count, failed_count)
+
     if failed_count > 0:
         sys.exit(1)
+
+    # Cache the current address only after a fully successful run
+    write_cached_ipv6(ipv6)
 
 
 if __name__ == "__main__":

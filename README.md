@@ -39,6 +39,7 @@ The script will:
 | `RECORD_NAMES` | List of record names to update (`""` = root `@`) |
 | `INTERFACE` | Network interface to read the IPv6 address from |
 | `INWX_API_URL` | INWX JSON-RPC API endpoint |
+| `CACHE_FILE` | Path to cache file for last known IPv6 address |
 
 ## Usage
 

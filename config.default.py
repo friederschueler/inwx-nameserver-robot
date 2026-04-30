@@ -16,3 +16,6 @@ INTERFACE = "eno1"
 
 # API endpoint
 INWX_API_URL = "https://api.domrobot.com/jsonrpc/"
+
+# Path to store the last known IPv6 address (avoids unnecessary INWX API calls)
+CACHE_FILE = "/opt/inwx-nameserver-robot/last_ipv6.cache"
